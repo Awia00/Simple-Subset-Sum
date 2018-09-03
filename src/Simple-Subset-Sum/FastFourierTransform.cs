@@ -1,67 +1,79 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
-using System.Text;
 
 namespace Simple_Subset_Sum
 {
-    public class FastFourierTransform
+    public static class FastFourierTransform
     {
-        /* Performs a Bit Reversal Algorithm on a postive integer 
-         * for given number of bits
-         * e.g. 011 with 3 bits is reversed to 110 */
-        public static int BitReverse(int n, int bits)
+        /// <summary>
+        ///
+        /// </summary>
+        /// <param name="a"></param>
+        /// <param name="inv">Indicating Inverse FFT or Not</param>
+        /// <returns></returns>
+        private static IList<Complex> RecoursiveFft(IList<Complex> a, bool inv)
         {
-            int reversedN = n;
-            int count = bits - 1;
+            var n = a.Count;
+            var y = new Complex[n]; // result
 
-            n >>= 1;
-            while (n > 0)
+            /* Base Case */
+            if (n == 1)
             {
-                reversedN = (reversedN << 1) | (n & 1);
-                count--;
-                n >>= 1;
+                y[0] = a[0];
+                return y;
             }
 
-            return ((reversedN << count) & ((1 << bits) - 1));
+            /* Calculate principal nth root of unity (i.e. exp(2*PI*i/n)) */
+            var wn = inv
+                ? new Complex(Math.Cos(-2.0 * Math.PI / n), Math.Sin(-2.0 * Math.PI / n))
+                : new Complex(Math.Cos(2.0 * Math.PI / n), Math.Sin(2.0 * Math.PI / n));
+            var w = new Complex(1.0, 0.0);
+
+            /* Extract even and odd coefficients */
+            var a0 = new Complex[n / 2];
+            var a1 = new Complex[n / 2];
+            for (var i = 0; i < n / 2; i++)
+            {
+                a0[i] = a[2 * i];
+                a1[i] = a[2 * i + 1];
+            }
+
+            /* Calculate 2 FFTs of size n/2 */
+            var y0 = RecoursiveFft(a0, inv);
+            var y1 = RecoursiveFft(a1, inv);
+            /* Combine results from half-size FFTs */
+            for (var k = 0; k < n / 2; k++)
+            {
+                var twiddle = Complex.Multiply(w, y1[k]);
+                y[k] = Complex.Add(y0[k], twiddle);
+                y[k + n / 2] = Complex.Subtract(y0[k], twiddle);
+                w = Complex.Multiply(w, wn);
+            }
+            return y;
         }
 
-        /* Uses Cooley-Tukey iterative in-place algorithm with radix-2 DIT case
-         * assumes no of points provided are a power of 2 */
-        public static void FFT(Complex[] buffer)
+        /// <summary>
+        /// Mutliplies two polynomials in nlogn time.
+        /// </summary>
+        /// <param name="a">polynomial a</param>
+        /// <param name="b">polynomial b</param>
+        /// <returns></returns>
+        public static IEnumerable<Complex> MultiplyPolynomials(IList<Complex> a, IList<Complex> b)
         {
-
-            int bits = (int)Math.Log(buffer.Length, 2);
-            for (int j = 1; j < buffer.Length / 2; j++)
+            //  w = cos(2*pi/m) + i*sin(2*pi/m)
+            var m = a.Count;
+            var fA = RecoursiveFft(a, false); // time O(n log n)
+            var fB = RecoursiveFft(b, false); // time O(n log n)
+            var fC = new Complex[m];
+            for (var i = 0; i < m; i++) // time O(n)
             {
-
-                int swapPos = BitReverse(j, bits);
-                var temp = buffer[j];
-                buffer[j] = buffer[swapPos];
-                buffer[swapPos] = temp;
+                fC[i] = Complex.Multiply(fA[i], fB[i]);
             }
-
-            for (int N = 2; N <= buffer.Length; N <<= 1)
-            {
-                for (int i = 0; i < buffer.Length; i += N)
-                {
-                    for (int k = 0; k < N / 2; k++)
-                    {
-
-                        int evenIndex = i + k;
-                        int oddIndex = i + k + (N / 2);
-                        var even = buffer[evenIndex];
-                        var odd = buffer[oddIndex];
-
-                        double term = -2 * Math.PI * k / (double)N;
-                        Complex exp = new Complex(Math.Cos(term), Math.Sin(term)) * odd;
-
-                        buffer[evenIndex] = even + exp;
-                        buffer[oddIndex] = even - exp;
-
-                    }
-                }
-            }
+            // 1 / m * FFT(fC, m, w^-1) ????
+            var result = RecoursiveFft(fC, true);
+            return result.Select(i => i / new Complex(m, 0)); // time O(n log n)
         }
     }
 }
